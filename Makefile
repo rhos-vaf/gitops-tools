@@ -23,6 +23,9 @@ deploy_argocd_instance: ## Deploy ArgoCD instance (Usage: ARGOCD_INSTANCE=client
 	@ARGOCD_INSTANCE=$(ARGOCD_INSTANCE) envsubst < argocd-instance-configs/argocd-instance.yaml | oc apply -f -
 	@ARGOCD_INSTANCE=$(ARGOCD_INSTANCE) envsubst < argocd-instance-configs/argocd-instance-rbac.yaml | oc apply -f -
 	@echo "ArgoCD instance $(ARGOCD_INSTANCE) deployed successfully"
+	@echo "Waiting for ArgoCD route to be available..."
+	@sleep 5
+	@echo "ArgoCD URL: https://$$(oc get route -n gitops-$(ARGOCD_INSTANCE) gitops-$(ARGOCD_INSTANCE)-server -o jsonpath='{.spec.host}' 2>/dev/null || echo 'Route not ready yet')"
 
 ##@ CREATE MANAGED NAMESPACE
 .PHONY: create_managed_namespace

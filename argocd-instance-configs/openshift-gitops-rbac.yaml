@@ -1,11 +1,11 @@
 ---
-# Grant ArgoCD instance permissions to manage ${ARGOCD_INSTANCE} namespace
+# Grant OpenShift GitOps permissions to manage cluster-wide resources
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: gitops-${ARGOCD_INSTANCE}-manager
+  name: openshift-gitops-cluster-manager
 rules:
-  # Permissions for managing OpenStack resources
+  # Permissions for OpenStack resources
   - apiGroups:
       - "core.openstack.org"
       - "network.openstack.org"
@@ -141,87 +141,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: gitops-${ARGOCD_INSTANCE}-manager-binding
+  name: openshift-gitops-cluster-manager-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: gitops-${ARGOCD_INSTANCE}-manager
+  name: openshift-gitops-cluster-manager
 subjects:
   - kind: ServiceAccount
-    name: gitops-${ARGOCD_INSTANCE}-argocd-application-controller
-    namespace: gitops-${ARGOCD_INSTANCE}
----
-# ClusterRole for ArgoCD application-controller to manage Applications cluster-wide
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: gitops-${ARGOCD_INSTANCE}-application-controller
-rules:
-  # Application controller needs cluster-wide access to Applications for sharding
-  - apiGroups:
-      - "argoproj.io"
-    resources:
-      - applications
-      - applicationsets
-      - appprojects
-    verbs:
-      - get
-      - list
-      - watch
-      - create
-      - update
-      - patch
-      - delete
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: gitops-${ARGOCD_INSTANCE}-application-controller-binding
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: gitops-${ARGOCD_INSTANCE}-application-controller
-subjects:
-  - kind: ServiceAccount
-    name: gitops-${ARGOCD_INSTANCE}-argocd-application-controller
-    namespace: gitops-${ARGOCD_INSTANCE}
----
-# ClusterRole for ArgoCD server to read Applications cluster-wide
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: gitops-${ARGOCD_INSTANCE}-server-reader
-rules:
-  # ArgoCD server needs to read Applications and ApplicationSets at cluster scope
-  - apiGroups:
-      - "argoproj.io"
-    resources:
-      - applications
-      - applicationsets
-      - appprojects
-    verbs:
-      - get
-      - list
-      - watch
-  # Read access to namespaces to discover where apps can be deployed
-  - apiGroups:
-      - ""
-    resources:
-      - namespaces
-    verbs:
-      - get
-      - list
-      - watch
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: gitops-${ARGOCD_INSTANCE}-server-reader-binding
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: gitops-${ARGOCD_INSTANCE}-server-reader
-subjects:
-  - kind: ServiceAccount
-    name: gitops-${ARGOCD_INSTANCE}-argocd-server
-    namespace: gitops-${ARGOCD_INSTANCE}
+    name: openshift-gitops-argocd-application-controller
+    namespace: openshift-gitops

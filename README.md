@@ -35,6 +35,11 @@ ARGOCD_INSTANCE=client1 make deploy_argocd_instance
 - Configures RBAC permissions for the instance
 - Enables OpenShift OAuth integration
 - Sets up resource customizations for OpenStack CRDs
+- Grants cluster-wide permissions for:
+  - **NNCP (NodeNetworkConfigurationPolicy)** management
+  - **MetalLB** resources (IPAddressPool, L2Advertisement) management
+  - **Namespace** label/annotation management
+- Displays the ArgoCD web UI URL upon completion
 
 ### Create/Update Managed Namespace
 Create or update a namespace that will be managed by an ArgoCD instance:
@@ -74,6 +79,30 @@ ARGOCD_INSTANCE=client1 make deploy_argocd_instance
 NAMESPACE=rhoso1 ARGOCD_INSTANCE=client1 make create_managed_namespace
 NAMESPACE=rhoso2 ARGOCD_INSTANCE=client1 make create_managed_namespace
 ```
+
+## Accessing ArgoCD UI
+
+After deploying an ArgoCD instance, the URL will be displayed automatically. You can also retrieve it manually:
+
+```bash
+# Get the route URL
+oc get route -n gitops-<ARGOCD_INSTANCE> gitops-<ARGOCD_INSTANCE>-server -o jsonpath='{.spec.host}'
+
+# Example for client1
+oc get route -n gitops-client1 gitops-client1-server -o jsonpath='{.spec.host}'
+```
+
+The ArgoCD instance uses OpenShift OAuth for authentication. Log in with your OpenShift credentials.
+
+## Cluster Permissions
+
+The `deploy_argocd_instance` target automatically grants the following cluster-level permissions to the ArgoCD application controller:
+
+1. **NNCP Manager**: Full permissions for `NodeNetworkConfigurationPolicy` resources (nmstate.io)
+2. **MetalLB Manager**: Full permissions for `IPAddressPool` and `L2Advertisement` resources (metallb.io)
+3. **Namespace Manager**: Read and update permissions for namespace labels and annotations
+
+These permissions allow ArgoCD to manage network configuration and load balancer resources required for OpenStack deployments.
 
 ## Configuration Files
 

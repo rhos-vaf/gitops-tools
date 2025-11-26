@@ -18,14 +18,23 @@ deploy_argocd_instance: ## Deploy ArgoCD instance (Usage: ARGOCD_INSTANCE=client
 	@oc project gitops-$(ARGOCD_INSTANCE)
 	@echo "Creating cluster root CA bundle ConfigMap"
 	@oc create configmap cluster-root-ca-bundle || true
-	@oc label configmap cluster-root-ca-bundle config.openshift.io/inject-trusted-cabundle=true --overwrite
+	@oc label configmap cluster-root-ca-bundle config.openshift.io/inject-trusted-cabundle=true --overwrite || true
 	@echo "Deploying ArgoCD instance and RBAC configuration"
 	@ARGOCD_INSTANCE=$(ARGOCD_INSTANCE) envsubst < argocd-instance-configs/argocd-instance.yaml | oc apply -f -
 	@ARGOCD_INSTANCE=$(ARGOCD_INSTANCE) envsubst < argocd-instance-configs/argocd-instance-rbac.yaml | oc apply -f -
-	@echo "ArgoCD instance $(ARGOCD_INSTANCE) deployed successfully"
+	@echo "ArgoCD instance $(ARGOCD_INSTANCE) deployed successfully with cluster-wide permissions"
 	@echo "Waiting for ArgoCD route to be available..."
 	@sleep 5
 	@echo "ArgoCD URL: https://$$(oc get route -n gitops-$(ARGOCD_INSTANCE) gitops-$(ARGOCD_INSTANCE)-server -o jsonpath='{.spec.host}' 2>/dev/null || echo 'Route not ready yet')"
+
+##@ CONFIGURE OPENSHIFT GITOPS
+.PHONY: configure_openshift_gitops
+configure_openshift_gitops: ## Grant cluster-wide permissions to openshift-gitops instance
+	@echo "Configuring OpenShift GitOps with cluster-wide permissions"
+	@oc apply -f argocd-instance-configs/openshift-gitops-rbac.yaml
+	@echo "Configuring OpenShift GitOps RBAC policy"
+	@oc patch argocd openshift-gitops -n openshift-gitops --type=merge -p '{"spec":{"rbac":{"defaultPolicy":"role:readonly","policy":"g, system:cluster-admins, role:admin\ng, kubeadmin, role:admin\ng, system:authenticated, role:admin\n","scopes":"[groups]"}}}'
+	@echo "OpenShift GitOps configured successfully with cluster-wide permissions and RBAC policy"
 
 ##@ CREATE MANAGED NAMESPACE
 .PHONY: create_managed_namespace

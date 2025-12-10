@@ -1,0 +1,43 @@
+# ============================================================================
+# OPENSHIFT GITOPS OPERATOR INSTALLATION
+# ============================================================================
+# Installs the OpenShift GitOps Operator (Red Hat's supported ArgoCD).
+# This creates:
+#   1. Namespace for the operator
+#   2. OperatorGroup to scope the operator
+#   3. Subscription to install from Red Hat catalog
+#
+# The operator will automatically create a default ArgoCD instance in the
+# openshift-gitops namespace.
+#
+# Usage: make install_gitops_operator
+# ============================================================================
+
+# Namespace for the GitOps operator components
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-gitops-operator
+---
+# OperatorGroup defines the scope of the operator installation
+# Default strategy allows the operator to manage all namespaces
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-gitops-operator
+  namespace: openshift-gitops-operator
+spec:
+  upgradeStrategy: Default  # Automatic operator upgrades
+---
+# Subscription to the OpenShift GitOps operator from Red Hat catalog
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: openshift-gitops-operator
+  namespace: openshift-gitops-operator
+spec:
+  channel: latest                          # Latest stable channel
+  name: openshift-gitops-operator          # Operator name in catalog
+  source: redhat-operators                 # Red Hat operators catalog
+  sourceNamespace: openshift-marketplace   # Marketplace namespace
+  installPlanApproval: Automatic           # Auto-approve updates

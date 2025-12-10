@@ -1,5 +1,21 @@
 ---
-# Grant OpenShift GitOps permissions to manage cluster-wide resources
+# ============================================================================
+# OPENSHIFT GITOPS DEFAULT INSTANCE RBAC
+# ============================================================================
+# Grants cluster-wide permissions to the default OpenShift GitOps ArgoCD
+# instance (created automatically by the operator in openshift-gitops namespace).
+#
+# This ClusterRole is similar to the per-instance RBAC in argocd-instance-rbac.yaml
+# but applies to the default GitOps instance.
+#
+# Usage: make configure_openshift_gitops
+# ============================================================================
+
+# ============================================================================
+# CLUSTER ROLE: OpenShift GitOps Cluster Manager
+# ============================================================================
+# Grants the default ArgoCD instance permissions to manage cluster resources
+# ============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -137,7 +153,45 @@ rules:
       - update
       - patch
       - delete
+  # Permissions for Metal3 (Bare Metal Provisioning)
+  - apiGroups:
+      - "metal3.io"
+    resources:
+      - baremetalhosts          # Bare metal host management
+      - provisionings           # Metal3 provisioning configuration
+      - baremetalhosts/status   # Host status updates
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  # Permissions for HashiCorp Vault Secrets Operator
+  - apiGroups:
+      - "secrets.hashicorp.com"
+    resources:
+      - vaultauths              # Vault authentication methods
+      - vaultconnections        # Vault connection configs
+      - vaultdynamicsecrets     # Dynamic secret management
+      - vaultpkisecrets         # PKI certificate management
+      - vaultstaticsecrets      # Static secret syncing
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
 ---
+# ============================================================================
+# CLUSTER ROLE BINDING: Bind to Default ArgoCD Instance
+# ============================================================================
+# Binds the openshift-gitops-cluster-manager ClusterRole to the default
+# ArgoCD application controller ServiceAccount in openshift-gitops namespace
+# ============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -148,5 +202,5 @@ roleRef:
   name: openshift-gitops-cluster-manager
 subjects:
   - kind: ServiceAccount
-    name: openshift-gitops-argocd-application-controller
-    namespace: openshift-gitops
+    name: openshift-gitops-argocd-application-controller  # Default instance SA
+    namespace: openshift-gitops                            # Default namespace

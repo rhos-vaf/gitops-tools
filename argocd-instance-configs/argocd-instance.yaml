@@ -1,25 +1,32 @@
 ---
+# Namespace for this ArgoCD instance
+# Will be created as gitops-<ARGOCD_INSTANCE> (e.g., gitops-client1)
 apiVersion: v1
 kind: Namespace
 metadata:
   name: gitops-${ARGOCD_INSTANCE}
   labels:
+    # Self-management: this namespace is managed by its own ArgoCD instance
     argocd.argoproj.io/managed-by: gitops-${ARGOCD_INSTANCE}
 ---
+# ArgoCD Custom Resource - configures an isolated ArgoCD instance
+# Template variable ${ARGOCD_INSTANCE} is replaced by envsubst during deployment
 apiVersion: argoproj.io/v1beta1
 kind: ArgoCD
 metadata:
   name: gitops-${ARGOCD_INSTANCE}
   namespace: gitops-${ARGOCD_INSTANCE}
 spec:
-  # Server configuration
+  # ============================================================================
+  # ARGOCD SERVER - Web UI and API server
+  # ============================================================================
   server:
-    replicas: 1
+    replicas: 1  # Single replica (increase for HA)
     route:
-      enabled: true
+      enabled: true  # Create OpenShift route for web access
       tls:
-        termination: reencrypt
-        insecureEdgeTerminationPolicy: Redirect
+        termination: reencrypt  # TLS between route and pod
+        insecureEdgeTerminationPolicy: Redirect  # HTTP -> HTTPS redirect
     resources:
       limits:
         cpu: 500m
@@ -27,26 +34,30 @@ spec:
       requests:
         cpu: 125m
         memory: 128Mi
-    insecure: false
-    # Disable admin user - use OpenShift OAuth instead
-    # Set to false to allow admin user login alongside OAuth
+    insecure: false  # Require TLS
+    # Admin user disabled - OpenShift OAuth is used instead
+    # Uncomment extraArgs below to disable OAuth and use admin user
     # extraArgs:
     #   - --disable-auth
 
-  # Application controller
+  # ============================================================================
+  # APPLICATION CONTROLLER - Reconciles Applications and syncs to cluster
+  # ============================================================================
   controller:
-    replicas: 1
+    replicas: 1  # Single replica (increase for HA)
     resources:
       limits:
-        cpu: 2000m
-        memory: 2Gi
+        cpu: 2000m    # Higher CPU for processing many Applications
+        memory: 2Gi   # Memory usage scales with number of Applications
       requests:
         cpu: 250m
         memory: 1Gi
     sharding:
-      enabled: false
+      enabled: false  # Disable sharding (enable for >1000 Applications)
 
-  # Repo server
+  # ============================================================================
+  # REPO SERVER - Clones Git repos and generates manifests
+  # ============================================================================
   repo:
     replicas: 1
     resources:
@@ -56,16 +67,19 @@ spec:
       requests:
         cpu: 250m
         memory: 256Mi
+    # Mount cluster CA bundle for accessing Git repos with private certificates
     volumeMounts:
     - mountPath: /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
       name: cluster-root-ca-bundle
       subPath: ca-bundle.crt
     volumes:
     - configMap:
-        name: cluster-root-ca-bundle
+        name: cluster-root-ca-bundle  # Created by Makefile target
       name: cluster-root-ca-bundle
-          
-  # Redis
+
+  # ============================================================================
+  # REDIS - Caching layer for Application state
+  # ============================================================================
   redis:
     resources:
       limits:
@@ -75,11 +89,13 @@ spec:
         cpu: 250m
         memory: 128Mi
 
-  # Enable OpenShift OAuth
+  # ============================================================================
+  # AUTHENTICATION - OpenShift OAuth integration via Dex
+  # ============================================================================
   sso:
     provider: dex
     dex:
-      openShiftOAuth: true
+      openShiftOAuth: true  # Use OpenShift users/groups for authentication
       resources:
         limits:
           cpu: 500m
@@ -88,27 +104,36 @@ spec:
           cpu: 250m
           memory: 128Mi
 
-  # HA disabled for single-node/CRC
+  # ============================================================================
+  # HIGH AVAILABILITY - Disabled for single-node/CRC environments
+  # ============================================================================
   ha:
-    enabled: false
+    enabled: false  # Set to true for production multi-node clusters
 
-  # RBAC configuration - allow OpenShift users to login
+  # ============================================================================
+  # RBAC CONFIGURATION - Controls who can access ArgoCD UI
+  # ============================================================================
   rbac:
-    defaultPolicy: 'role:readonly'
+    defaultPolicy: 'role:readonly'  # Unauthenticated users get read-only
     policy: |
-      # Grant admin role to cluster-admins group
+      # Grant admin role to OpenShift cluster-admins
       g, system:cluster-admins, role:admin
       g, cluster-admins, role:admin
 
-      # Grant admin role to specific OpenShift users (add your username here)
+      # Grant admin role to specific OpenShift users (uncomment and add usernames)
       # g, <your-openshift-username>, role:admin
+      # g, admin-user1, role:admin
 
-      # Grant admin role to any authenticated OpenShift user
+      # Grant admin role to ALL authenticated OpenShift users
+      # WARNING: Remove this line if you want to restrict access to specific users
       g, system:authenticated, role:admin
-    scopes: '[groups]'
+    scopes: '[groups]'  # Use OpenShift groups for RBAC
 
-  # Resource customizations for OpenStack CRDs
+  # ============================================================================
+  # RESOURCE CUSTOMIZATIONS - Custom health checks for CRDs
+  # ============================================================================
   resourceCustomizations: |
+    # Custom health check for ArgoCD Applications
     argoproj.io/Application:
       health.lua: |
         hs = {}
@@ -123,6 +148,8 @@ spec:
           end
         end
         return hs
+
+    # Health check for OpenStack Control Plane - checks Ready condition
     core.openstack.org/OpenStackControlPlane:
       health.lua: |
         hs = {}
@@ -145,6 +172,8 @@ spec:
         hs.status = "Progressing"
         hs.message = "Waiting for OpenStackControlPlane to be ready"
         return hs
+
+    # Health check for Kubernetes Jobs - checks succeeded/failed status
     batch/v1/Job:
       health.lua: |
         hs = {}
@@ -164,17 +193,22 @@ spec:
         hs.message = "Job is running"
         return hs
 
-  # Resource exclusions
+  # ============================================================================
+  # RESOURCE EXCLUSIONS - Resources to ignore during sync
+  # ============================================================================
   resourceExclusions: |
+    # Exclude Tekton resources (they are ephemeral and shouldn't be managed by ArgoCD)
     - apiGroups:
       - tekton.dev
       clusters:
       - '*'
       kinds:
-      - TaskRun
-      - PipelineRun
+      - TaskRun      # Tekton pipeline task runs
+      - PipelineRun  # Tekton pipeline runs
 
-  # ApplicationSet controller
+  # ============================================================================
+  # APPLICATIONSET CONTROLLER - Manages ApplicationSets for multi-cluster apps
+  # ============================================================================
   applicationSet:
     resources:
       limits:
@@ -184,22 +218,29 @@ spec:
         cpu: 250m
         memory: 256Mi
 
-  # Notifications controller
+  # ============================================================================
+  # NOTIFICATIONS CONTROLLER - Sends notifications about app sync status
+  # ============================================================================
   notifications:
-    enabled: false
+    enabled: false  # Disabled by default (enable for Slack/email notifications)
 
-  # Status badge
+  # ============================================================================
+  # STATUS BADGE - Enables /api/badge endpoint for status badges
+  # ============================================================================
   statusBadgeEnabled: true
 
-  # Prometheus monitoring
+  # ============================================================================
+  # PROMETHEUS MONITORING - Exposes metrics for Prometheus scraping
+  # ============================================================================
   prometheus:
-    enabled: true
+    enabled: true   # Enable metrics endpoint
     route:
-      enabled: false
+      enabled: false  # Don't expose metrics via external route
 
-  # Source namespaces - where ArgoCD can deploy Applications from
+  # ============================================================================
+  # SOURCE NAMESPACES - Namespaces where ArgoCD Applications can be created
+  # ============================================================================
+  # Applications can only be created in these namespaces for security isolation
+  # Use create_managed_namespace Makefile target to add more namespaces
   sourceNamespaces:
-    - gitops-${ARGOCD_INSTANCE}
-
-  # Configure to manage ${ARGOCD_INSTANCE} namespace
-  # This will be set via RBAC after creation
+    - gitops-${ARGOCD_INSTANCE}  # Default: ArgoCD instance's own namespace

@@ -1,93 +1,180 @@
 ---
-# Grant ArgoCD instance permissions to manage ${ARGOCD_INSTANCE} namespace
+# ============================================================================
+# NOTE: CLUSTER-WIDE vs NAMESPACE-SCOPED RESOURCE MANAGEMENT
+# ============================================================================
+# ArgoCD instances CAN manage namespace-scoped resources including:
+#   - OpenStack CRDs (within allowed namespaces)
+#   - Deployments, StatefulSets, DaemonSets
+#   - ConfigMaps, Secrets, Services
+#   - Jobs, CronJobs
+#   - Roles, RoleBindings
+#   - And other namespace-scoped Kubernetes resources
+#
+# ArgoCD instances CANNOT manage cluster-scoped resources including:
+#   - Namespaces
+#   - NodeNetworkConfigurationPolicy (NNCP)
+#   - MetalLB resources (IPAddressPool, L2Advertisement)
+#   - ClusterRoles, ClusterRoleBindings
+#   - StorageClasses, PersistentVolumes
+#
+# For cluster-scoped resources, use the default OpenShift GitOps instance
+# configured with 'make configure_openshift_gitops'
+# ============================================================================
+---
+# ============================================================================
+# CLUSTER ROLE: ArgoCD Instance Manager
+# ============================================================================
+# Grants permissions to manage namespace-scoped resources across the cluster.
+# The ArgoCD instance can only deploy to namespaces listed in its
+# sourceNamespaces configuration.
+# ============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: gitops-${ARGOCD_INSTANCE}-manager
 rules:
-  # Permissions for managing OpenStack resources
+  # --------------------------------------------------------------------------
+  # OpenStack Operator CRDs - Namespace-scoped resources
+  # --------------------------------------------------------------------------
   - apiGroups:
-      - "core.openstack.org"
-      - "network.openstack.org"
-      - "dataplane.openstack.org"
-      - "telemetry.openstack.org"
-      - "heat.openstack.org"
-      - "ironic.openstack.org"
-      - "manila.openstack.org"
-      - "ovn.openstack.org"
-      - "rabbitmq.openstack.org"
-      - "neutron.openstack.org"
-      - "nova.openstack.org"
-      - "cinder.openstack.org"
-      - "glance.openstack.org"
-      - "keystone.openstack.org"
-      - "placement.openstack.org"
-      - "mariadb.openstack.org"
-      - "octavia.openstack.org"
-      - "barbican.openstack.org"
-      - "horizon.openstack.org"
+      - "core.openstack.org"         # OpenStackControlPlane, OpenStackVersion
+      - "network.openstack.org"      # Network configuration
+      - "dataplane.openstack.org"    # Data plane nodes and deployments
+      - "telemetry.openstack.org"    # Telemetry and monitoring
+      - "heat.openstack.org"         # Orchestration
+      - "ironic.openstack.org"       # Bare metal provisioning
+      - "manila.openstack.org"       # Shared filesystems
+      - "ovn.openstack.org"          # OVN networking
+      - "rabbitmq.openstack.org"     # Message queue
+      - "neutron.openstack.org"      # Networking service
+      - "nova.openstack.org"         # Compute service
+      - "cinder.openstack.org"       # Block storage
+      - "glance.openstack.org"       # Image service
+      - "keystone.openstack.org"     # Identity service
+      - "placement.openstack.org"    # Placement service
+      - "mariadb.openstack.org"      # Database
+      - "octavia.openstack.org"      # Load balancer
+      - "barbican.openstack.org"     # Secrets management
+      - "horizon.openstack.org"      # Dashboard
     resources:
-      - "*"
+      - "*"  # All resource types (namespace-scoped)
     verbs:
-      - "*"
-  # Permissions for Kubernetes core resources
+      - "*"  # All operations (get, list, watch, create, update, patch, delete)
+
+  # --------------------------------------------------------------------------
+  # Kubernetes Core Resources - Namespace-scoped only
+  # --------------------------------------------------------------------------
   - apiGroups:
-      - ""
+      - ""  # Core API group (v1)
     resources:
-      - namespaces
-      - secrets
-      - configmaps
-      - services
-      - serviceaccounts
-      - persistentvolumes
-      - persistentvolumeclaims
-      - pods
-      - pods/log
+      - secrets               # Sensitive data storage
+      - configmaps            # Configuration data
+      - services              # Service endpoints
+      - serviceaccounts       # Service account identities
+      - persistentvolumeclaims  # Namespace storage requests
+      - pods                  # Pod management
+      - pods/log              # Pod log access
+      - endpoints             # Service endpoints
+      - events                # Event logs
     verbs:
-      - "*"
-  # Permissions for storage
+      - "*"  # Full CRUD operations
+
+  # --------------------------------------------------------------------------
+  # Storage Resources - Namespace-scoped only
+  # --------------------------------------------------------------------------
   - apiGroups:
       - "storage.k8s.io"
     resources:
-      - storageclasses
-      - volumeattachments
+      - volumeattachments   # Volume to node attachments
     verbs:
-      - "*"
-  # Permissions for batch jobs
+      - get
+      - list
+      - watch
+
+  # --------------------------------------------------------------------------
+  # Batch Jobs - Namespace-scoped
+  # --------------------------------------------------------------------------
   - apiGroups:
       - "batch"
     resources:
-      - jobs
-      - cronjobs
+      - jobs       # One-time jobs
+      - cronjobs   # Scheduled jobs
     verbs:
       - "*"
-  # Permissions for RBAC
+
+  # --------------------------------------------------------------------------
+  # RBAC Resources - Namespace-scoped only
+  # --------------------------------------------------------------------------
   - apiGroups:
       - "rbac.authorization.k8s.io"
     resources:
-      - roles
-      - rolebindings
-      - clusterroles
-      - clusterrolebindings
+      - roles                  # Namespace-scoped permissions
+      - rolebindings           # Namespace-scoped bindings
     verbs:
-      - "*"
-  # Permissions for Apps
+      - "*"  # Required for OpenStack operators to create RBAC
+
+  # --------------------------------------------------------------------------
+  # Application Workloads - Namespace-scoped
+  # --------------------------------------------------------------------------
   - apiGroups:
       - "apps"
     resources:
-      - deployments
-      - statefulsets
-      - daemonsets
+      - deployments      # Stateless applications
+      - statefulsets     # Stateful applications
+      - daemonsets       # Node-level applications
+      - replicasets      # Replica management
     verbs:
       - "*"
-  # Permissions for Routes
+
+  # --------------------------------------------------------------------------
+  # OpenShift Routes - Namespace-scoped
+  # --------------------------------------------------------------------------
   - apiGroups:
       - "route.openshift.io"
     resources:
-      - routes
+      - routes  # OpenShift HTTP/HTTPS routes
     verbs:
       - "*"
+
+  # --------------------------------------------------------------------------
+  # Network Attachment Definitions (NAD) - Namespace-scoped
+  # --------------------------------------------------------------------------
+  - apiGroups:
+      - "k8s.cni.cncf.io"
+    resources:
+      - network-attachment-definitions  # Secondary network interfaces for pods
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  # --------------------------------------------------------------------------
+  # Monitoring and Metrics - Namespace-scoped
+  # --------------------------------------------------------------------------
+  - apiGroups:
+      - "monitoring.coreos.com"
+    resources:
+      - servicemonitors
+      - podmonitors
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
 ---
+# ============================================================================
+# CLUSTER ROLE BINDING: Bind Manager Role to Application Controller
+# ============================================================================
+# Binds the gitops-${ARGOCD_INSTANCE}-manager ClusterRole to the
+# ArgoCD application controller ServiceAccount
+# ============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -101,19 +188,26 @@ subjects:
     name: gitops-${ARGOCD_INSTANCE}-argocd-application-controller
     namespace: gitops-${ARGOCD_INSTANCE}
 ---
-# ClusterRole for ArgoCD application-controller to manage Applications cluster-wide
+# ============================================================================
+# CLUSTER ROLE: ArgoCD Application Controller
+# ============================================================================
+# Grants the application controller cluster-wide access to ArgoCD CRDs.
+# Required for:
+#   - Sharding (distributing Applications across multiple controllers)
+#   - Managing Applications in multiple namespaces (sourceNamespaces)
+# ============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: gitops-${ARGOCD_INSTANCE}-application-controller
 rules:
-  # Application controller needs cluster-wide access to Applications for sharding
+  # Application controller needs full access to ArgoCD CRDs at cluster scope
   - apiGroups:
       - "argoproj.io"
     resources:
-      - applications
-      - applicationsets
-      - appprojects
+      - applications      # Application resources
+      - applicationsets   # ApplicationSet resources (multi-cluster apps)
+      - appprojects       # AppProject resources (grouping and RBAC)
     verbs:
       - get
       - list
@@ -123,6 +217,9 @@ rules:
       - patch
       - delete
 ---
+# ============================================================================
+# CLUSTER ROLE BINDING: Bind Application Controller Role
+# ============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -136,24 +233,33 @@ subjects:
     name: gitops-${ARGOCD_INSTANCE}-argocd-application-controller
     namespace: gitops-${ARGOCD_INSTANCE}
 ---
-# ClusterRole for ArgoCD server to read Applications cluster-wide
+# ============================================================================
+# CLUSTER ROLE: ArgoCD Server Reader
+# ============================================================================
+# Grants the ArgoCD server (UI/API) read-only access to ArgoCD CRDs and
+# namespaces. Required for:
+#   - Displaying Applications in the UI
+#   - API queries for Application status
+#   - Namespace discovery for Application creation
+# ============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: gitops-${ARGOCD_INSTANCE}-server-reader
 rules:
-  # ArgoCD server needs to read Applications and ApplicationSets at cluster scope
+  # ArgoCD server needs read access to Applications and ApplicationSets
   - apiGroups:
       - "argoproj.io"
     resources:
-      - applications
-      - applicationsets
-      - appprojects
+      - applications      # Display Applications in UI
+      - applicationsets   # Display ApplicationSets in UI
+      - appprojects       # Display AppProjects in UI
     verbs:
-      - get
-      - list
-      - watch
-  # Read access to namespaces to discover where apps can be deployed
+      - get      # Read individual resources
+      - list     # List all resources
+      - watch    # Watch for changes (real-time updates)
+
+  # Read namespaces to show available deployment targets in UI
   - apiGroups:
       - ""
     resources:
@@ -163,6 +269,9 @@ rules:
       - list
       - watch
 ---
+# ============================================================================
+# CLUSTER ROLE BINDING: Bind Server Reader Role
+# ============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:

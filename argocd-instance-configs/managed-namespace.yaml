@@ -1,9 +1,40 @@
-# Namespace deployment
+# ============================================================================
+# MANAGED NAMESPACE TEMPLATE
+# ============================================================================
+# Creates a namespace configured to be managed by an ArgoCD instance.
+# Template variables are replaced by envsubst during deployment:
+#   ${NAMESPACE} - Name of the namespace to create
+#   ${ARGOCD_INSTANCE} - Name of the ArgoCD instance managing this namespace
+#
+# Usage: NAMESPACE=rhoso1 ARGOCD_INSTANCE=client1 make create_managed_namespace
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: ${NAMESPACE}
   labels:
-    pod-security.kubernetes.io/enforce: privileged
+    # --------------------------------------------------------------------------
+    # Pod Security Standards - Set to privileged for OpenStack workloads
+    # --------------------------------------------------------------------------
+    # OpenStack control plane pods require privileged access for:
+    #   - Host networking (OVN, keepalived)
+    #   - Host path volumes (logs, configs)
+    #   - Privileged containers (openvswitch, etc.)
+    pod-security.kubernetes.io/enforce: privileged  # Allow privileged pods
+    pod-security.kubernetes.io/audit: privileged    # Don't audit privileged
+    pod-security.kubernetes.io/warn: privileged     # Don't warn on privileged
+
+    # Prevent OpenShift from automatically changing pod security labels
     security.openshift.io/scc.podSecurityLabelSync: "false"
+
+    # --------------------------------------------------------------------------
+    # ArgoCD Management Labels
+    # --------------------------------------------------------------------------
+    # Links this namespace to the ArgoCD instance that manages it
     argocd.argoproj.io/managed-by: gitops-${ARGOCD_INSTANCE}
+
+    # --------------------------------------------------------------------------
+    # Application Labels - For grouping and filtering
+    # --------------------------------------------------------------------------
+    app.kubernetes.io/part-of: openstack       # Part of OpenStack deployment
+    app.kubernetes.io/managed-by: kustomize    # Managed by Kustomize/GitOps

@@ -96,7 +96,7 @@ install_gitops_operator: ## Install the OpenShift GitOps Operator (Red Hat's Arg
 	@echo "=========================================="
 	# Apply operator subscription to install OpenShift GitOps
 	# This creates: namespace, operatorgroup, and subscription
-	@oc apply -f openshift-gitops-configs/gitops-operator-install.yaml
+	@oc apply -f openshift-gitops-configs/openshift-gitops-operator-install.yaml
 	@echo ""
 	@echo "✅ OpenShift GitOps Operator installation initiated"
 	@echo ""
@@ -128,7 +128,7 @@ configure_openshift_gitops: verify_gitops_examples ## Configure the default open
 	@echo "Configuring ArgoCD custom resource health checks"
 	# Apply custom health checks for OpenStack and Metal3 resources
 	# This teaches ArgoCD how to determine if custom resources are healthy
-	@oc patch configmap argocd-cm -n openshift-gitops --type merge --patch-file argocd-health-checks/resource-health-checks.yaml
+	@oc patch configmap argocd-cm -n openshift-gitops --type merge --patch-file openshift-gitops-configs/argocd-resource-health-checks.yaml
 	@echo "Restarting ArgoCD controller to apply health check configuration"
 	@oc rollout restart deployment cluster -n openshift-gitops
 	@echo ""
@@ -169,7 +169,7 @@ setup_vault: verify_gitops_examples ## Setup Vault namespace and deploy vault co
 	@sed -e 's/NAMESPACE_PLACEHOLDER/$(NAMESPACE)/g' \
 	     -e 's|APPROLE_SECRET_ID_BASE64_PLACEHOLDER|$(APPROLE_SECRET_ID_BASE64)|g' \
 	     -e 's/APPROLE_ROLE_ID_PLACEHOLDER/$(APPROLE_ROLE_ID)/g' \
-	     vault-configs/kustomization-template.yaml > examples/infra/vault/kustomization.yaml
+	     vault-configs/vault-approle-kustomization.yaml.template > examples/infra/vault/kustomization.yaml
 	@echo "Building and applying vault configuration..."
 	@oc apply -k examples/infra/vault
 	@echo "Vault setup complete for namespace: $(NAMESPACE)"

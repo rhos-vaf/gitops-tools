@@ -15,9 +15,23 @@
 
 .DEFAULT_GOAL := help
 
+# Variables
+APPROLE_SECRET_ID ?=
+APPROLE_ROLE_ID ?=
+
 .PHONY: help
 help: ## Display this help message with all available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+##@ INTERNAL TARGETS
+.PHONY: verify_gitops_examples
+verify_gitops_examples: ## Verify and clone rhos-gitops/examples repository if needed (internal target)
+	@if [ ! -d "examples" ]; then \
+		echo "Cloning examples repository..."; \
+		git clone https://gitlab.cee.redhat.com/rhos-gitops/examples.git; \
+	else \
+		echo "examples directory already exists, skipping clone"; \
+	fi
 
 ##@ ARGOCD INSTANCE MANAGEMENT
 .PHONY: deploy_argocd_instance
@@ -96,7 +110,7 @@ install_gitops_operator: ## Install the OpenShift GitOps Operator (Red Hat's Arg
 
 
 .PHONY: configure_openshift_gitops
-configure_openshift_gitops: ## Configure the default openshift-gitops ArgoCD instance with cluster-wide permissions and TLS certificates
+configure_openshift_gitops: verify_gitops_examples ## Configure the default openshift-gitops ArgoCD instance with cluster-wide permissions and TLS certificates
 	@echo "=========================================="
 	@echo "Configuring OpenShift GitOps"
 	@echo "=========================================="
@@ -110,7 +124,7 @@ configure_openshift_gitops: ## Configure the default openshift-gitops ArgoCD ins
 	@echo "Configuring ArgoCD TLS certificates for Git repository access"
 	# Apply ConfigMap with TLS certificates for Git repository access
 	# This allows ArgoCD to trust private/internal Git servers (e.g., gitlab.cee.redhat.com)
-	@oc apply -f openshift-gitops-configs/argocd-cert-bundle.yaml -n openshift-gitops
+	@oc apply -f examples/infra/configmap/argocd-cert-bundle.yaml -n openshift-gitops
 	@echo ""
 	@echo "✅ OpenShift GitOps configured successfully"
 	@echo ""
@@ -122,3 +136,39 @@ configure_openshift_gitops: ## Configure the default openshift-gitops ArgoCD ins
 	@echo ""
 	@echo "Access the UI at:"
 	@echo "  oc get route -n openshift-gitops openshift-gitops-server -o jsonpath='{.spec.host}'"
+
+##@ VAULT INTEGRATION
+.PHONY: setup_vault
+setup_vault: verify_gitops_examples ## Setup Vault namespace and deploy vault configuration (Usage: NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> APPROLE_SECRET_ID=<secret-id> make setup_vault)
+	# Validate required parameters
+	@if [ -z "$(NAMESPACE)" ] || [ -z "$(APPROLE_ROLE_ID)" ] || [ -z "$(APPROLE_SECRET_ID)" ]; then \
+		echo "Error: Missing required parameter(s)"; \
+		[ -z "$(NAMESPACE)" ] && echo "  - NAMESPACE is required"; \
+		[ -z "$(APPROLE_ROLE_ID)" ] && echo "  - APPROLE_ROLE_ID is required"; \
+		[ -z "$(APPROLE_SECRET_ID)" ] && echo "  - APPROLE_SECRET_ID is required"; \
+		echo ""; \
+		echo "Usage: make setup_vault NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> APPROLE_SECRET_ID=<secret-id>"; \
+		exit 1; \
+	fi
+	@echo "Setting up Vault in namespace: $(NAMESPACE)"
+	@echo "Creating namespace..."
+	@oc create namespace $(NAMESPACE) --dry-run=client -o yaml | oc apply -f -
+	@echo "Encoding AppRole secret ID..."
+	$(eval APPROLE_SECRET_ID_BASE64 := $(shell echo -n "$(APPROLE_SECRET_ID)" | base64 -w 0))
+	@echo "Applying Red Hat CA certificate..."
+	@cat examples/infra/secret/redhat-ca.yaml | \
+		sed 's/namespace: openstack/namespace: $(NAMESPACE)/' | \
+		oc apply -f -
+	@echo "Creating kustomization from template..."
+	@sed -e 's/NAMESPACE_PLACEHOLDER/$(NAMESPACE)/g' \
+	     -e 's|APPROLE_SECRET_ID_BASE64_PLACEHOLDER|$(APPROLE_SECRET_ID_BASE64)|g' \
+	     -e 's/APPROLE_ROLE_ID_PLACEHOLDER/$(APPROLE_ROLE_ID)/g' \
+	     vault-configs/kustomization-template.yaml > examples/infra/vault/kustomization.yaml
+	@echo "Building and applying vault configuration..."
+	@oc apply -k examples/infra/vault
+	@echo "Vault setup complete for namespace: $(NAMESPACE)"
+
+.PHONY: clean_gitops_examples
+clean_gitops_examples: ## Remove the cloned examples directory
+	@rm -rf examples
+	@echo "Cleaned up examples directory"

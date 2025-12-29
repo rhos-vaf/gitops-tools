@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: NAMESPACE_PLACEHOLDER
+
+resources:
+  - vault-auth.yaml
+  - vault-connection.yaml
+  - vault-secret.yaml
+
+patches:
+  - target:
+      kind: VaultAuth
+      name: vaultauth-rhos-gitops
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: vaultauth-APPROLE_ROLE_ID_PLACEHOLDER
+      - op: replace
+        path: /spec/appRole/roleId
+        value: APPROLE_ROLE_ID_PLACEHOLDER
+  - target:
+      kind: Secret
+      name: vault-approle-secret-corp-redhat
+    patch: |-
+      - op: replace
+        path: /data/id
+        value: APPROLE_SECRET_ID_BASE64_PLACEHOLDER

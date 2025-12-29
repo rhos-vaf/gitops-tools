@@ -25,7 +25,6 @@ This repository provides Make targets that simplify:
 
 ### Required Tools
 - **oc CLI**: OpenShift command-line tool (authenticated to your cluster)
-- **envsubst**: Environment variable substitution tool (from `gettext` package)
 - **make**: GNU Make for running automation targets
 
 ### Required Permissions
@@ -38,7 +37,7 @@ You need cluster-admin or equivalent permissions to:
 ### Installation Check
 ```bash
 # Verify required tools are installed
-which oc envsubst make
+which oc make
 
 # Verify cluster access
 oc whoami

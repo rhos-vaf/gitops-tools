@@ -4,18 +4,18 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: gitops-${ARGOCD_INSTANCE}
+  name: gitops-ARGOCD_INSTANCE
   labels:
     # Self-management: this namespace is managed by its own ArgoCD instance
-    argocd.argoproj.io/managed-by: gitops-${ARGOCD_INSTANCE}
+    argocd.argoproj.io/managed-by: gitops-ARGOCD_INSTANCE
 ---
 # ArgoCD Custom Resource - configures an isolated ArgoCD instance
-# Template variable ${ARGOCD_INSTANCE} is replaced by envsubst during deployment
+# Template variable ARGOCD_INSTANCE is replaced by sed during deployment
 apiVersion: argoproj.io/v1beta1
 kind: ArgoCD
 metadata:
-  name: gitops-${ARGOCD_INSTANCE}
-  namespace: gitops-${ARGOCD_INSTANCE}
+  name: gitops-ARGOCD_INSTANCE
+  namespace: gitops-ARGOCD_INSTANCE
 spec:
   # ============================================================================
   # ARGOCD SERVER - Web UI and API server
@@ -243,4 +243,4 @@ spec:
   # Applications can only be created in these namespaces for security isolation
   # Use create_managed_namespace Makefile target to add more namespaces
   sourceNamespaces:
-    - gitops-${ARGOCD_INSTANCE}  # Default: ArgoCD instance's own namespace
+    - gitops-ARGOCD_INSTANCE  # Default: ArgoCD instance's own namespace

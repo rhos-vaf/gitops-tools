@@ -1,6 +1,6 @@
 # GitOps Tools
 
-Automation toolkit for deploying and managing multiple ArgoCD instances, namespaces, and HashiCorp Vault integration in OpenShift/Kubernetes clusters. This toolset is optimized for multi-tenant RHOSO (Red Hat OpenStack Services on OpenShift) deployments but can be used for any GitOps workflow requiring isolated ArgoCD instances.
+Automation toolkit for deploying and managing multiple ArgoCD instances, custom resource health checks, namespaces, and HashiCorp Vault integration in OpenShift/Kubernetes clusters. This toolset is optimized for multi-tenant RHOSO (Red Hat OpenStack Services on OpenShift) deployments but can be used for any GitOps workflow requiring isolated ArgoCD instances.
 
 ## Table of Contents
 
@@ -8,6 +8,7 @@ Automation toolkit for deploying and managing multiple ArgoCD instances, namespa
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [ArgoCD Instance Management](#argocd-instance-management)
+- [ArgoCD Resource Health Checks](#argocd-resource-health-checks)
 - [Vault Integration](#vault-integration)
 - [Accessing ArgoCD UI](#accessing-argocd-ui)
 - [Troubleshooting](#troubleshooting)
@@ -16,6 +17,7 @@ Automation toolkit for deploying and managing multiple ArgoCD instances, namespa
 
 This repository provides Make targets that simplify:
 - **ArgoCD Management**: Installing and configuring the OpenShift GitOps Operator
+- **Resource Health Checks**: Custom health checks for OpenStack and Metal3 resources
 - **Multi-tenancy**: Deploying multiple isolated ArgoCD instances (e.g., one per customer/team)
 - **Namespace Management**: Creating and managing namespaces with proper security and RBAC configurations
 - **Cluster Permissions**: Configuring cluster-wide permissions for OpenStack-related resources (NNCP, MetalLB, etc.)
@@ -121,6 +123,8 @@ make configure_openshift_gitops
 - Configures RBAC policy to allow authenticated users admin access to ArgoCD UI
 - Applies TLS certificates ConfigMap (`argocd-tls-certs-cm`) for Git repository access
 - Enables ArgoCD to trust private/internal Git servers (e.g., `gitlab.cee.redhat.com`)
+- **Configures custom resource health checks** for OpenStack and Metal3 resources
+- **Restarts ArgoCD controller** to apply health check configuration
 
 **Note**: Run this after the operator installation completes
 
@@ -223,6 +227,69 @@ The OpenShift GitOps operator also creates a default instance:
 # Get default ArgoCD URL
 oc get route -n openshift-gitops openshift-gitops-server -o jsonpath='{.spec.host}'
 ```
+
+---
+
+## ArgoCD Resource Health Checks
+
+The `configure_openshift_gitops` target automatically configures ArgoCD with custom health checks for OpenStack and Metal3 resources. This enables ArgoCD to understand the health status of custom resources and properly orchestrate sync waves.
+
+### Included Health Checks
+
+The following custom resource health checks are automatically configured:
+
+1. **metal3.io/BareMetalHost** - Healthy when state is "available" or "provisioned"
+2. **core.openstack.org/OpenStackControlPlane** - Healthy when Ready condition is True
+3. **dataplane.openstack.org/OpenStackDataPlaneNodeSet** - Healthy when SetupReady condition is True
+4. **dataplane.openstack.org/OpenStackDataPlaneDeployment** - Healthy when Ready condition is True
+5. **nmstate.io/NodeNetworkConfigurationPolicy** - Healthy when Available condition is True
+6. **secrets.hashicorp.com/VaultStaticSecret** - Healthy when SecretSynced condition is True
+7. **secrets.hashicorp.com/VaultAuth** - Healthy when status.valid is true
+8. **secrets.hashicorp.com/VaultConnection** - Healthy when status.valid is true
+9. **baremetal.openstack.org/OpenStackProvisionServer** - Healthy when Ready condition is True
+10. **operators.coreos.com/Subscription** - Healthy when state is AtLatestKnown or UpgradePending
+11. **argoproj.io/Application** - Delegates to application's own health status
+
+### Benefits
+
+With these health checks configured:
+- ✅ **Native GitOps** - ArgoCD natively understands resource health without custom wait Jobs
+- ✅ **Better visibility** - ArgoCD UI shows actual resource health status
+- ✅ **Automatic retries** - ArgoCD handles sync retries automatically
+- ✅ **Less complexity** - No ServiceAccount/RBAC needed for basic health checks
+- ✅ **Resource efficiency** - No Job pods consuming cluster resources
+- ✅ **Sync wave orchestration** - Resources in later waves wait for earlier waves to be healthy
+
+### Manual Configuration
+
+The health checks are stored in [`argocd-health-checks/resource-health-checks.yaml`](argocd-health-checks/resource-health-checks.yaml) and can be manually applied:
+
+```bash
+# Apply health checks manually
+oc patch configmap argocd-cm -n openshift-gitops \
+  --type merge \
+  --patch-file argocd-health-checks/resource-health-checks.yaml
+
+# Restart ArgoCD controller to pick up changes
+oc rollout restart deployment cluster -n openshift-gitops
+```
+
+### Verification
+
+```bash
+# Check that health checks are configured
+oc get configmap argocd-cm -n openshift-gitops -o yaml | \
+  grep -A 5 "resource.customizations.health"
+
+# View logs to verify health checks are being used
+oc logs -n openshift-gitops deployment/cluster | grep health
+```
+
+### Documentation
+
+For detailed information about the health checks implementation, see:
+- [`argocd-health-checks/resource-health-checks.yaml`](argocd-health-checks/resource-health-checks.yaml) - The health check definitions
+- [ArgoCD Resource Health Documentation](https://argo-cd.readthedocs.io/en/stable/operator-manual/health/) - Official ArgoCD documentation
 
 ---
 
@@ -379,6 +446,22 @@ oc get pods -n gitops-<ARGOCD_INSTANCE>
 oc logs -n gitops-<ARGOCD_INSTANCE> -l app.kubernetes.io/name=argocd-server
 ```
 
+#### Resource health checks not working
+```bash
+# Verify health checks are configured
+oc get configmap argocd-cm -n openshift-gitops -o yaml | \
+  grep "resource.customizations.health"
+
+# Restart ArgoCD controller
+oc rollout restart deployment cluster -n openshift-gitops
+
+# Check controller logs for health check evaluation
+oc logs -n openshift-gitops deployment/cluster | grep -i health
+
+# View resource health status in ArgoCD UI
+# Navigate to Application → Select Resource → View Health Status
+```
+
 #### Namespace not appearing in ArgoCD
 ```bash
 # Verify namespace is in sourceNamespaces
@@ -432,4 +515,22 @@ oc get csv -n openshift-gitops-operator
 
 # View all Vault resources in a namespace
 oc get vaultauth,vaultconnection,secret -n <NAMESPACE>
+
+# Check custom resource health in ArgoCD
+oc get configmap argocd-cm -n openshift-gitops -o yaml | \
+  grep -A 10 "resource.customizations.health"
+
+# View ArgoCD controller deployment
+oc get deployment cluster -n openshift-gitops
 ```
+
+---
+
+## References
+
+- [OpenShift GitOps Documentation](https://docs.openshift.com/container-platform/latest/cicd/gitops/understanding-openshift-gitops.html)
+- [ArgoCD Documentation](https://argo-cd.readthedocs.io/)
+- [ArgoCD Resource Health Checks](https://argo-cd.readthedocs.io/en/stable/operator-manual/health/)
+- [External Secrets Operator](https://external-secrets.io/)
+- [HashiCorp Vault](https://www.vaultproject.io/)
+- [RHOSO Documentation](https://access.redhat.com/documentation/en-us/red_hat_openstack_services_on_openshift)

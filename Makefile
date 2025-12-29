@@ -125,6 +125,13 @@ configure_openshift_gitops: verify_gitops_examples ## Configure the default open
 	# This allows ArgoCD to trust private/internal Git servers (e.g., gitlab.cee.redhat.com)
 	@oc apply -f examples/infra/configmap/argocd-cert-bundle.yaml -n openshift-gitops
 	@echo ""
+	@echo "Configuring ArgoCD custom resource health checks"
+	# Apply custom health checks for OpenStack and Metal3 resources
+	# This teaches ArgoCD how to determine if custom resources are healthy
+	@oc patch configmap argocd-cm -n openshift-gitops --type merge --patch-file argocd-health-checks/resource-health-checks.yaml
+	@echo "Restarting ArgoCD controller to apply health check configuration"
+	@oc rollout restart deployment cluster -n openshift-gitops
+	@echo ""
 	@echo "✅ OpenShift GitOps configured successfully"
 	@echo ""
 	@echo "This instance can now manage:"

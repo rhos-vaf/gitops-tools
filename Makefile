@@ -4,7 +4,6 @@
 #
 # Prerequisites:
 #   - oc CLI installed and authenticated to your cluster
-#   - envsubst command available (usually from gettext package)
 #   - Proper RBAC permissions to create namespaces and ArgoCD resources
 #
 # Quick Start:
@@ -51,12 +50,12 @@ deploy_argocd_instance: ## Deploy a new ArgoCD instance (Usage: ARGOCD_INSTANCE=
 	@echo "Creating cluster root CA bundle ConfigMap"
 	@oc create configmap cluster-root-ca-bundle || true
 	@oc label configmap cluster-root-ca-bundle config.openshift.io/inject-trusted-cabundle=true --overwrite || true
-	# Deploy ArgoCD instance using envsubst to replace ${ARGOCD_INSTANCE} in YAML templates
+	# Deploy ArgoCD instance using sed to replace ARGOCD_INSTANCE placeholder in YAML templates
 	# NOTE: This instance can only manage namespace-scoped resources
 	# For cluster-scoped resources (NNCP, MetalLB, etc.), use openshift-gitops instance
 	@echo "Deploying ArgoCD instance and RBAC configuration"
-	@ARGOCD_INSTANCE=$(ARGOCD_INSTANCE) envsubst < argocd-instance-configs/argocd-instance.yaml | oc apply -f -
-	@ARGOCD_INSTANCE=$(ARGOCD_INSTANCE) envsubst < argocd-instance-configs/argocd-instance-rbac.yaml | oc apply -f -
+	@sed 's/ARGOCD_INSTANCE/$(ARGOCD_INSTANCE)/g' argocd-instance-configs/argocd-instance.yaml | oc apply -f -
+	@sed 's/ARGOCD_INSTANCE/$(ARGOCD_INSTANCE)/g' argocd-instance-configs/argocd-instance-rbac.yaml | oc apply -f -
 	@echo "ArgoCD instance $(ARGOCD_INSTANCE) deployed successfully"
 	@echo "NOTE: This instance can only manage namespace-scoped resources"
 	# Display the ArgoCD UI URL for easy access
@@ -78,7 +77,7 @@ create_managed_namespace: ## Create/update a namespace managed by an ArgoCD inst
 	fi
 	@echo "Creating/updating managed namespace: $(NAMESPACE) for ArgoCD instance: $(ARGOCD_INSTANCE)"
 	# Create namespace with proper labels for ArgoCD management and pod security
-	@NAMESPACE=$(NAMESPACE) ARGOCD_INSTANCE=$(ARGOCD_INSTANCE) envsubst < argocd-instance-configs/managed-namespace.yaml | oc apply -f -
+	@sed -e 's/NAMESPACE/$(NAMESPACE)/g' -e 's/ARGOCD_INSTANCE/$(ARGOCD_INSTANCE)/g' argocd-instance-configs/managed-namespace.yaml | oc apply -f -
 	# Register namespace in ArgoCD's sourceNamespaces (allows ArgoCD Applications to be created in this namespace)
 	@echo "Adding $(NAMESPACE) to ArgoCD instance sourceNamespaces"
 	@if ! oc get argocd gitops-$(ARGOCD_INSTANCE) -n gitops-$(ARGOCD_INSTANCE) -o jsonpath='{.spec.sourceNamespaces[*]}' | grep -q "$(NAMESPACE)"; then \

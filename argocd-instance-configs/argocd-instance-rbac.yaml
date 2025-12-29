@@ -31,7 +31,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: gitops-${ARGOCD_INSTANCE}-manager
+  name: gitops-ARGOCD_INSTANCE-manager
 rules:
   # --------------------------------------------------------------------------
   # OpenStack Operator CRDs - Namespace-scoped resources
@@ -172,21 +172,21 @@ rules:
 # ============================================================================
 # CLUSTER ROLE BINDING: Bind Manager Role to Application Controller
 # ============================================================================
-# Binds the gitops-${ARGOCD_INSTANCE}-manager ClusterRole to the
+# Binds the gitops-ARGOCD_INSTANCE-manager ClusterRole to the
 # ArgoCD application controller ServiceAccount
 # ============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: gitops-${ARGOCD_INSTANCE}-manager-binding
+  name: gitops-ARGOCD_INSTANCE-manager-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: gitops-${ARGOCD_INSTANCE}-manager
+  name: gitops-ARGOCD_INSTANCE-manager
 subjects:
   - kind: ServiceAccount
-    name: gitops-${ARGOCD_INSTANCE}-argocd-application-controller
-    namespace: gitops-${ARGOCD_INSTANCE}
+    name: gitops-ARGOCD_INSTANCE-argocd-application-controller
+    namespace: gitops-ARGOCD_INSTANCE
 ---
 # ============================================================================
 # CLUSTER ROLE: ArgoCD Application Controller
@@ -199,7 +199,7 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: gitops-${ARGOCD_INSTANCE}-application-controller
+  name: gitops-ARGOCD_INSTANCE-application-controller
 rules:
   # Application controller needs full access to ArgoCD CRDs at cluster scope
   - apiGroups:
@@ -223,15 +223,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: gitops-${ARGOCD_INSTANCE}-application-controller-binding
+  name: gitops-ARGOCD_INSTANCE-application-controller-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: gitops-${ARGOCD_INSTANCE}-application-controller
+  name: gitops-ARGOCD_INSTANCE-application-controller
 subjects:
   - kind: ServiceAccount
-    name: gitops-${ARGOCD_INSTANCE}-argocd-application-controller
-    namespace: gitops-${ARGOCD_INSTANCE}
+    name: gitops-ARGOCD_INSTANCE-argocd-application-controller
+    namespace: gitops-ARGOCD_INSTANCE
 ---
 # ============================================================================
 # CLUSTER ROLE: ArgoCD Server Reader
@@ -245,7 +245,7 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: gitops-${ARGOCD_INSTANCE}-server-reader
+  name: gitops-ARGOCD_INSTANCE-server-reader
 rules:
   # ArgoCD server needs read access to Applications and ApplicationSets
   - apiGroups:
@@ -275,12 +275,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: gitops-${ARGOCD_INSTANCE}-server-reader-binding
+  name: gitops-ARGOCD_INSTANCE-server-reader-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: gitops-${ARGOCD_INSTANCE}-server-reader
+  name: gitops-ARGOCD_INSTANCE-server-reader
 subjects:
   - kind: ServiceAccount
-    name: gitops-${ARGOCD_INSTANCE}-argocd-server
-    namespace: gitops-${ARGOCD_INSTANCE}
+    name: gitops-ARGOCD_INSTANCE-argocd-server
+    namespace: gitops-ARGOCD_INSTANCE

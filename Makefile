@@ -144,6 +144,26 @@ configure_openshift_gitops: verify_gitops_examples ## Configure the default open
 	@echo "  oc get route -n openshift-gitops openshift-gitops-server -o jsonpath='{.spec.host}'"
 
 ##@ VAULT INTEGRATION
+.PHONY: install_vault_secrets_operator
+install_vault_secrets_operator: ## Install the Vault Secrets Operator from certified operators
+	@echo "=========================================="
+	@echo "Installing Vault Secrets Operator"
+	@echo "=========================================="
+	# Apply operator subscription to install Vault Secrets Operator
+	# This creates the subscription in the openshift-operators namespace
+	# The operator will be available cluster-wide once installed
+	@oc apply -f vault-configs/vault-secrets-operator-install.yaml
+	@echo ""
+	@echo "✅ Vault Secrets Operator installation initiated"
+	@echo ""
+	@echo "Monitor installation progress with:"
+	@echo "  oc get subscription vault-secrets-operator -n openshift-operators"
+	@echo "  oc get csv -n openshift-operators | grep vault-secrets"
+	@echo "  oc get pods -n openshift-operators | grep vault-secrets"
+	@echo ""
+	@echo "Once installed, you can configure Vault integration with:"
+	@echo "  make setup_vault NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> APPROLE_SECRET_ID=<secret-id>"
+
 .PHONY: setup_vault
 setup_vault: verify_gitops_examples ## Setup Vault namespace and deploy vault configuration (Usage: NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> APPROLE_SECRET_ID=<secret-id> make setup_vault)
 	# Validate required parameters

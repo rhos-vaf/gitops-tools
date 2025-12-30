@@ -58,13 +58,16 @@ NAMESPACE=rhoso2 ARGOCD_INSTANCE=client1 make create_managed_namespace
 ### Vault Integration Setup
 
 ```bash
-# Set up Vault integration for a namespace
+# 1. Install the Vault Secrets Operator (one-time setup)
+make install_vault_secrets_operator
+
+# 2. Set up Vault integration for a namespace
 make setup_vault \
   NAMESPACE=rhoso1 \
   APPROLE_ROLE_ID=my-role \
   APPROLE_SECRET_ID=<your-secret-id>
 
-# Clean up cloned examples repository
+# 3. Clean up cloned examples repository (optional)
 make clean_gitops_examples
 ```
 

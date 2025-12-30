@@ -5,23 +5,64 @@ This repository includes automation for deploying HashiCorp Vault integration fo
 ### Vault Overview
 
 The Vault integration automates the setup of Vault authentication and connection configuration by:
-1. Creating a dedicated namespace for Vault resources
-2. Cloning the required configuration templates from the examples repository
-3. Generating a kustomization.yaml from the template in `vault-configs/vault-approle-kustomization.yaml.template`
-4. Applying kustomize patches to customize the configuration with your namespace, Role ID, and Secret ID
-5. Deploying the Vault integration to the OpenShift cluster
+1. Installing the Vault Secrets Operator (one-time setup)
+2. Creating a dedicated namespace for Vault resources
+3. Cloning the required configuration templates from the examples repository
+4. Generating a kustomization.yaml from the template in `vault-configs/vault-approle-kustomization.yaml.template`
+5. Applying kustomize patches to customize the configuration with your namespace, Role ID, and Secret ID
+6. Deploying the Vault integration to the OpenShift cluster
 
 ### Vault Prerequisites
 
 - OpenShift cluster with admin access
-- External Secrets Operator installed
+- Vault Secrets Operator installed (can be installed using `make install_vault_secrets_operator`)
 - HashiCorp Vault instance accessible from the cluster
 - AppRole authentication configured in Vault
 - Valid AppRole Role ID and Secret ID for authentication
 
 ### Vault Make Targets
 
-#### 5. setup_vault
+#### 1. install_vault_secrets_operator
+
+**Purpose**: Install the Vault Secrets Operator from the certified operators catalog
+
+**Usage**:
+```bash
+make install_vault_secrets_operator
+```
+
+**What it does**:
+- Creates a Subscription resource in the `openshift-operators` namespace
+- Installs the Vault Secrets Operator from the certified-operators catalog
+- Configures automatic installation plan approval
+- Makes the operator available cluster-wide
+
+**Monitoring Installation**:
+After running the command, you can monitor the installation progress with:
+```bash
+# Check subscription status
+oc get subscription vault-secrets-operator -n openshift-operators
+
+# Check ClusterServiceVersion (CSV) status
+oc get csv -n openshift-operators | grep vault-secrets
+
+# Check operator pods
+oc get pods -n openshift-operators | grep vault-secrets
+```
+
+**What Gets Installed**:
+- **Operator**: Vault Secrets Operator (from certified-operators)
+- **Channel**: stable
+- **Install Mode**: Automatic
+- **Scope**: Cluster-wide (openshift-operators namespace)
+
+The Vault Secrets Operator enables Kubernetes to sync secrets from HashiCorp Vault, providing:
+- Dynamic secret management
+- Automatic secret rotation
+- Centralized secret storage
+- Integration with Vault authentication methods (AppRole, Kubernetes, etc.)
+
+#### 2. setup_vault
 
 **Purpose**: Deploy Vault configuration to integrate with HashiCorp Vault for secret management
 
@@ -55,7 +96,7 @@ make setup_vault NAMESPACE=rhoso1 APPROLE_ROLE_ID=my-role APPROLE_SECRET_ID=my-s
 3. **VaultConnection**: Defines the connection to the Vault server with TLS configuration
 4. **Secret - AppRole Secret ID** (`vault-approle-secret-corp-redhat`): Stores the base64-encoded AppRole Secret ID
 
-#### 6. clean_gitops_examples
+#### 3. clean_gitops_examples
 
 **Purpose**: Remove the cloned examples directory
 
@@ -107,16 +148,6 @@ The kustomization configuration is defined in `vault-configs/vault-approle-kusto
 - `NAMESPACE_PLACEHOLDER` - Replaced with the target namespace
 - `APPROLE_SECRET_ID_BASE64_PLACEHOLDER` - Replaced with the base64-encoded Secret ID
 - `APPROLE_ROLE_ID_PLACEHOLDER` - Replaced with the AppRole Role ID
-
-### Workflow
-
-1. **Validate Parameters**: Checks that `NAMESPACE`, `APPROLE_ROLE_ID`, and `APPROLE_SECRET_ID` are provided
-2. **Create Namespace**: Creates the target namespace if it doesn't exist (idempotent operation)
-3. **Clone Repository**: Clones configuration templates from GitLab (skipped if already exists)
-4. **Encode Secret**: Base64-encodes the AppRole Secret ID using `base64 -w 0`
-5. **Apply CA Certificate**: Deploys Red Hat CA certificate to the target namespace
-6. **Generate Kustomization**: Processes template using `sed` to replace placeholders
-7. **Apply Configuration**: Uses `oc apply -k` to deploy all vault resources
 
 ### Integration with RHOSO
 

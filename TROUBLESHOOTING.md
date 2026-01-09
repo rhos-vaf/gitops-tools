@@ -16,17 +16,27 @@ oc logs -n gitops-<ARGOCD_INSTANCE> -l app.kubernetes.io/name=argocd-server
 
 #### Resource health checks not working
 ```bash
-# Verify health checks are configured
+# IMPORTANT: Always patch the ArgoCD CR, not the ConfigMap directly
+# The operator manages the ConfigMap and will revert manual changes
+
+# 1. Verify health checks are in the ArgoCD CR (source of truth)
+oc get argocd openshift-gitops -n openshift-gitops -o jsonpath='{.spec.resourceHealthChecks}' | jq
+
+# 2. Verify operator propagated them to the ConfigMap
 oc get configmap argocd-cm -n openshift-gitops -o yaml | \
   grep "resource.customizations.health"
 
-# Restart ArgoCD controller
-oc rollout restart deployment cluster -n openshift-gitops
+# 3. If ConfigMap is missing health checks, re-apply the ArgoCD CR patch
+oc patch argocd openshift-gitops -n openshift-gitops --type merge \
+  --patch-file openshift-gitops-configs/argocd-cr-resource-health-checks.yaml
 
-# Check controller logs for health check evaluation
-oc logs -n openshift-gitops deployment/cluster | grep -i health
+# 4. Wait for operator reconciliation (usually ~10 seconds)
+sleep 10
 
-# View resource health status in ArgoCD UI
+# 5. Check controller logs for health check evaluation
+oc logs -n openshift-gitops deployment/openshift-gitops-server | grep -i health
+
+# 6. View resource health status in ArgoCD UI
 # Navigate to Application → Select Resource → View Health Status
 ```
 
@@ -84,12 +94,23 @@ oc get csv -n openshift-gitops-operator
 # View all Vault resources in a namespace
 oc get vaultauth,vaultconnection,secret -n <NAMESPACE>
 
-# Check custom resource health in ArgoCD
+# Check custom resource health checks configuration
+# Source of truth: ArgoCD CR
+oc get argocd openshift-gitops -n openshift-gitops \
+  -o jsonpath='{.spec.resourceHealthChecks[*].kind}' | tr ' ' '\n'
+
+# Verify propagation to ConfigMap
 oc get configmap argocd-cm -n openshift-gitops -o yaml | \
-  grep -A 10 "resource.customizations.health"
+  grep "resource.customizations.health" | cut -d: -f1
+
+# View full health check for specific resource
+oc get argocd openshift-gitops -n openshift-gitops \
+  -o jsonpath='{.spec.resourceHealthChecks[?(@.kind=="BareMetalHost")]}' | jq
 
 # View ArgoCD controller deployment
-oc get deployment cluster -n openshift-gitops
+oc get deployment openshift-gitops-server -n openshift-gitops
+oc get deployment openshift-gitops-repo-server -n openshift-gitops
+oc get deployment openshift-gitops-applicationset-controller -n openshift-gitops
 ```
 
 ---

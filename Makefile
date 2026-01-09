@@ -126,11 +126,11 @@ configure_openshift_gitops: verify_gitops_examples ## Configure the default open
 	@oc apply -f examples/infra/configmap/argocd-cert-bundle.yaml -n openshift-gitops
 	@echo ""
 	@echo "Configuring ArgoCD custom resource health checks"
-	# Apply custom health checks for OpenStack and Metal3 resources
+	# Apply custom health checks for OpenStack and Metal3 resources via ArgoCD CR
 	# This teaches ArgoCD how to determine if custom resources are healthy
-	@oc patch configmap argocd-cm -n openshift-gitops --type merge --patch-file openshift-gitops-configs/argocd-resource-health-checks.yaml
-	@echo "Restarting ArgoCD controller to apply health check configuration"
-	@oc rollout restart deployment cluster -n openshift-gitops
+	@oc patch argocd openshift-gitops -n openshift-gitops --type merge --patch-file openshift-gitops-configs/argocd-cr-resource-health-checks.yaml
+	@echo "Waiting for ArgoCD operator to reconcile changes to argocd-cm ConfigMap..."
+	@sleep 10
 	@echo ""
 	@echo "✅ OpenShift GitOps configured successfully"
 	@echo ""

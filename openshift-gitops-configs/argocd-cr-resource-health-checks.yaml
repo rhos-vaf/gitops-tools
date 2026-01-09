@@ -1,0 +1,236 @@
+---
+# ArgoCD CR Patch for Custom Resource Health Checks
+#
+# This patch adds custom health check Lua scripts to the ArgoCD Custom Resource.
+# The operator will then propagate these to the argocd-cm ConfigMap automatically.
+#
+# NOTE: Uses resourceHealthChecks field (v0.8.0+), not the deprecated resourceCustomizations
+# Each entry maps to resource.customizations.health.<group>_<kind> in argocd-cm
+#
+# Usage:
+#   oc patch argocd openshift-gitops -n openshift-gitops --type merge --patch-file argocd-cr-resource-health-checks.yaml
+#
+spec:
+  resourceHealthChecks:
+    # BareMetalHost Health Check
+    # A BareMetalHost is healthy when provisioning.state is "available" or "provisioned"
+    - group: metal3.io
+      kind: BareMetalHost
+      check: |
+        hs = {}
+        if obj.status ~= nil and obj.status.provisioning ~= nil and obj.status.provisioning.state ~= nil then
+          if obj.status.provisioning.state == "available" or obj.status.provisioning.state == "provisioned" then
+            hs.status = "Healthy"
+            hs.message = "BareMetalHost is " .. obj.status.provisioning.state
+            return hs
+          end
+        end
+        hs.status = "Progressing"
+        if obj.status ~= nil and obj.status.provisioning ~= nil and obj.status.provisioning.state ~= nil then
+          hs.message = "BareMetalHost provisioning state: " .. obj.status.provisioning.state
+        else
+          hs.message = "BareMetalHost provisioning state unknown"
+        end
+        return hs
+
+    # OpenStackControlPlane Health Check
+    # A control plane is healthy when Ready condition is True
+    - group: core.openstack.org
+      kind: OpenStackControlPlane
+      check: |
+        hs = {}
+        if obj.status ~= nil and obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Progressing"
+              hs.message = condition.message
+              return hs
+            end
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = condition.message
+              return hs
+            end
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "Waiting for OpenStackControlPlane setup completion."
+        return hs
+
+    # OpenStackDataPlaneNodeSet Health Check
+    # A NodeSet is healthy when SetupReady condition is True
+    - group: dataplane.openstack.org
+      kind: OpenStackDataPlaneNodeSet
+      check: |
+        hs = {}
+        if obj.status ~= nil and obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "SetupReady" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = condition.message
+              return hs
+            end
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "OpenStackDataPlaneNodeSet setup not ready"
+        return hs
+
+    # OpenStackDataPlaneDeployment Health Check
+    # A deployment is healthy when Ready condition is True
+    - group: dataplane.openstack.org
+      kind: OpenStackDataPlaneDeployment
+      check: |
+        hs = {}
+        if obj.status ~= nil and obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = condition.message
+              return hs
+            end
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "OpenStackDataPlaneDeployment not ready"
+        return hs
+
+    # NodeNetworkConfigurationPolicy Health Check
+    # NNCP is healthy when Available condition is True
+    - group: nmstate.io
+      kind: NodeNetworkConfigurationPolicy
+      check: |
+        hs = {}
+        if obj.status ~= nil and obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Progressing" and condition.status == "True" then
+              hs.status = "Progressing"
+              hs.message = condition.message
+              return hs
+            end
+            if condition.type == "Degraded" and condition.status == "True" then
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
+            end
+            if condition.type == "Available" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = condition.message
+              return hs
+            end
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "Waiting for NNCP to be SuccessfullyConfigured"
+        return hs
+
+    # VaultStaticSecret Health Check (Vault Secrets Operator)
+    # A VaultStaticSecret is healthy when the SecretSynced condition is True
+    - group: secrets.hashicorp.com
+      kind: VaultStaticSecret
+      check: |
+        hs = {}
+        if obj.status ~= nil and obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "SecretSynced" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "Secret synced from Vault"
+              return hs
+            end
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "Waiting for Vault secret sync"
+        return hs
+
+    # VaultAuth Health Check
+    # VaultAuth is healthy when status.valid is true
+    - group: secrets.hashicorp.com
+      kind: VaultAuth
+      check: |
+        hs = {}
+        hs.status = "Progressing"
+        hs.message = "Waiting for VaultAuth to be Valid."
+        if obj.status ~= nil then
+          if obj.status.valid ~= nil then
+            if obj.status.valid == true then
+              hs.status = "Healthy"
+              hs.message = "VaultAuth is valid"
+            end
+          end
+        end
+        return hs
+
+    # VaultConnection Health Check
+    # VaultConnection is healthy when status.valid is true
+    - group: secrets.hashicorp.com
+      kind: VaultConnection
+      check: |
+        hs = {}
+        hs.status = "Progressing"
+        hs.message = "Waiting for VaultConnection to be Valid."
+        if obj.status ~= nil then
+          if obj.status.valid ~= nil then
+            if obj.status.valid == true then
+              hs.status = "Healthy"
+              hs.message = "VaultConnection is valid"
+            end
+          end
+        end
+        return hs
+
+    # OpenStackProvisionServer Health Check
+    # Provision server is healthy when Ready condition is True
+    - group: baremetal.openstack.org
+      kind: OpenStackProvisionServer
+      check: |
+        hs = {}
+        if obj.status ~= nil and obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = condition.message
+              return hs
+            end
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "OpenStackProvisionServer not ready"
+        return hs
+
+    # Subscription Health Check (OLM)
+    # Subscription is healthy when state is AtLatestKnown or UpgradePending
+    - group: operators.coreos.com
+      kind: Subscription
+      check: |
+        hs = {}
+        hs.status = "Progressing"
+        hs.message = ""
+        if obj.status ~= nil then
+          if obj.status.state ~= nil then
+            if obj.status.state == "AtLatestKnown" or obj.status.state == "UpgradePending" then
+              hs.message = obj.status.state .. " - " .. obj.status.currentCSV
+              hs.status = "Healthy"
+            end
+          end
+        end
+        return hs
+
+    # ArgoCD Application Health Check
+    # Application is healthy based on its own health.status
+    - group: argoproj.io
+      kind: Application
+      check: |
+        hs = {}
+        if obj.status ~= nil then
+          if obj.status.health ~= nil then
+            hs.status = obj.status.health.status
+            if obj.status.health.message ~= nil then
+              hs.message = obj.status.health.message
+            end
+            return hs
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "Application status unknown"
+        return hs

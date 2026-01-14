@@ -234,3 +234,89 @@ spec:
         hs.status = "Progressing"
         hs.message = "Application status unknown"
         return hs
+
+    # MachineConfig Health Check (OpenShift)
+    # MachineConfig is always considered healthy once created
+    # The actual rollout status is tracked by MachineConfigPool health check
+    - group: machineconfiguration.openshift.io
+      kind: MachineConfig
+      check: |
+        hs = {}
+        if obj.metadata ~= nil and obj.metadata.name ~= nil then
+          hs.status = "Healthy"
+          hs.message = "MachineConfig created (rollout tracked by MachineConfigPool)"
+          return hs
+        end
+        hs.status = "Progressing"
+        hs.message = "MachineConfig not yet created"
+        return hs
+
+    # MachineConfigPool Health Check (OpenShift)
+    # MachineConfigPool is healthy when all machines are updated, ready, and not degraded
+    # Critical for ArgoCD wave ordering when MachineConfigs are applied
+    - group: machineconfiguration.openshift.io
+      kind: MachineConfigPool
+      check: |
+        hs = {}
+        if obj.status ~= nil then
+          if obj.status.conditions ~= nil then
+            -- Parse conditions
+            local updated = false
+            local updating = false
+            local degraded = false
+
+            for i, condition in ipairs(obj.status.conditions) do
+              if condition.type == "Updated" and condition.status == "True" then
+                updated = true
+              end
+              if condition.type == "Updating" and condition.status == "True" then
+                updating = true
+              end
+              if condition.type == "Degraded" and condition.status == "True" then
+                degraded = true
+              end
+            end
+
+            -- Parse machine counts
+            local machineCount = obj.status.machineCount or 0
+            local readyMachineCount = obj.status.readyMachineCount or 0
+            local updatedMachineCount = obj.status.updatedMachineCount or 0
+            local degradedMachineCount = obj.status.degradedMachineCount or 0
+
+            -- Healthy: all machines updated, ready, and not degraded
+            if updated and not updating and not degraded and
+               machineCount == readyMachineCount and
+               machineCount == updatedMachineCount and
+               degradedMachineCount == 0 then
+              hs.status = "Healthy"
+              hs.message = "All " .. tostring(machineCount) .. " machines updated and ready"
+              return hs
+            end
+
+            -- Degraded: pool or machines in error state
+            if degraded or degradedMachineCount > 0 then
+              hs.status = "Degraded"
+              hs.message = "Pool degraded: " .. tostring(degradedMachineCount) .. "/" .. tostring(machineCount) .. " machines degraded"
+              return hs
+            end
+
+            -- Progressing: actively updating
+            if updating then
+              hs.status = "Progressing"
+              hs.message = "Updating: " .. tostring(readyMachineCount) .. "/" .. tostring(machineCount) .. " ready, " .. tostring(updatedMachineCount) .. "/" .. tostring(machineCount) .. " updated"
+              return hs
+            end
+
+            -- Progressing: waiting for all machines to catch up
+            if readyMachineCount < machineCount or updatedMachineCount < machineCount then
+              hs.status = "Progressing"
+              hs.message = "Rolling out: " .. tostring(readyMachineCount) .. "/" .. tostring(machineCount) .. " ready, " .. tostring(updatedMachineCount) .. "/" .. tostring(machineCount) .. " updated"
+              return hs
+            end
+          end
+        end
+
+        -- Unknown: can't determine health
+        hs.status = "Unknown"
+        hs.message = "Unable to determine MachineConfigPool health"
+        return hs

@@ -124,6 +124,71 @@ spec:
         hs.message = "Waiting for NNCP to be SuccessfullyConfigured"
         return hs
 
+    # AnsibleTest Health Check (Test Operator)
+    # An AnsibleTest is healthy when the Ready condition is True (test passed)
+    - group: test.openstack.org
+      kind: AnsibleTest
+      check: |
+        hs = {}
+        hs.status = "Progressing"
+        hs.message = "AnsibleTest is initializing"
+
+        if obj.status ~= nil then
+          -- Check if the test has finished (succeeded or failed)
+          if obj.status.conditions ~= nil then
+            for i, condition in ipairs(obj.status.conditions) do
+              -- Ready condition indicates test completion
+              if condition.type == "Ready" then
+                if condition.status == "True" then
+                  hs.status = "Healthy"
+                  hs.message = "AnsibleTest completed successfully"
+                  return hs
+                elseif condition.status == "False" and condition.reason == "Failed" then
+                  hs.status = "Degraded"
+                  hs.message = "AnsibleTest failed: " .. (condition.message or "Unknown error")
+                  return hs
+                end
+              end
+
+              -- Error condition
+              if condition.type == "Error" and condition.status == "True" then
+                hs.status = "Degraded"
+                hs.message = "AnsibleTest error: " .. (condition.message or "Unknown error")
+                return hs
+              end
+            end
+          end
+
+          -- Check hash (indicates test is running)
+          if obj.status.hash ~= nil and obj.status.hash ~= "" then
+            hs.status = "Progressing"
+            hs.message = "AnsibleTest is running (hash: " .. string.sub(obj.status.hash, 1, 8) .. ")"
+            return hs
+          end
+
+          -- Check for workflow steps
+          if obj.status.workflowTasks ~= nil then
+            local totalSteps = 0
+            local completedSteps = 0
+            for i, task in ipairs(obj.status.workflowTasks) do
+              totalSteps = totalSteps + 1
+              if task.status == "Completed" then
+                completedSteps = completedSteps + 1
+              end
+            end
+            if totalSteps > 0 then
+              hs.status = "Progressing"
+              hs.message = string.format("AnsibleTest running: %d/%d steps completed", completedSteps, totalSteps)
+              return hs
+            end
+          end
+        end
+
+        -- Default progressing state
+        hs.status = "Progressing"
+        hs.message = "Waiting for AnsibleTest to start"
+        return hs
+
     # VaultStaticSecret Health Check (Vault Secrets Operator)
     # A VaultStaticSecret is healthy when the SecretSynced condition is True
     - group: secrets.hashicorp.com

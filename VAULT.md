@@ -82,6 +82,17 @@ make setup_vault NAMESPACE=<rhoso-namespace> APPROLE_ROLE_ID=<role-id> APPROLE_S
 make setup_vault NAMESPACE=rhoso1 APPROLE_ROLE_ID=my-role APPROLE_SECRET_ID=my-secret
 ```
 
+**Verify Installation**:
+After deployment, verify that Vault authentication and connection are working:
+
+```bash
+# Check VaultAuth - verify "valid": true
+oc -n <NAMESPACE> get vaultauths.secrets.hashicorp.com vaultauth-<APPROLE_ROLE_ID> -ojsonpath='{.status.valid}'
+
+# Check VaultConnection - verify "valid": true
+oc -n <NAMESPACE> get vaultconnections.secrets.hashicorp.com vaultconnection-corp-redhat -ojsonpath='{.status.valid}'
+```
+
 **What it does**:
 - Creates the target namespace if it doesn't exist
 - Clones configuration templates from `https://gitlab.cee.redhat.com/rhos-gitops/examples.git`

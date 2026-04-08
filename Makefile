@@ -191,7 +191,7 @@ setup_vault: verify_gitops_examples ## Setup Vault namespace and deploy vault co
 	     -e 's/APPROLE_ROLE_ID_PLACEHOLDER/$(APPROLE_ROLE_ID)/g' \
 	     vault-configs/vault-approle-kustomization.yaml.template > examples/infra/vault/kustomization.yaml
 	@echo "Building and applying vault configuration..."
-	@oc apply -k examples/infra/vault
+	@oc apply -k examples/infra/vault --server-side --force-conflicts
 	@echo "Vault setup complete for namespace: $(NAMESPACE)"
 
 .PHONY: clean_gitops_examples

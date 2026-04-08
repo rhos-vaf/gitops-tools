@@ -51,14 +51,23 @@ oc get namespace <NAMESPACE> --show-labels
 
 #### Vault authentication failing
 ```bash
-# Check VaultAuth status
+# List VaultAuth resources
 oc get vaultauth -n <NAMESPACE>
 
-# Check VaultConnection status
+# Check VaultAuth status - should return "true"
+oc -n <NAMESPACE> get vaultauths.secrets.hashicorp.com <vaultauth-name> -ojsonpath='{.status.valid}'
+
+# View detailed VaultAuth status
+oc -n <NAMESPACE> get vaultauths.secrets.hashicorp.com <vaultauth-name> -ojsonpath='{.status}' | jq
+
+# List VaultConnection resources
 oc get vaultconnection -n <NAMESPACE>
 
-# View External Secrets Operator logs
-oc logs -n external-secrets-operator deployment/external-secrets
+# Check VaultConnection status - should return "true"
+oc -n <NAMESPACE> get vaultconnections.secrets.hashicorp.com vaultconnection-corp-redhat -ojsonpath='{.status.valid}'
+
+# View detailed VaultConnection status
+oc -n <NAMESPACE> get vaultconnections.secrets.hashicorp.com vaultconnection-corp-redhat -ojsonpath='{.status}' | jq
 ```
 
 #### Examples repository clone fails

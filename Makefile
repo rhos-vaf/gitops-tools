@@ -22,9 +22,15 @@ APPROLE_ROLE_ID ?=
 help: ## Display this help message with all available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-##@ INTERNAL TARGETS
+.PHONY: check-var-%
+check-var-%:
+	@if [ -z "$($(*))" ]; then \
+		echo "Error: $* is required"; \
+		exit 1; \
+	fi
+
 .PHONY: verify_gitops_examples
-verify_gitops_examples: ## Verify and clone rhos-gitops/examples repository if needed (internal target)
+verify_gitops_examples:
 	@if [ ! -d "examples" ]; then \
 		echo "Cloning examples repository..."; \
 		git clone https://gitlab.cee.redhat.com/rhos-gitops/examples.git; \
@@ -34,12 +40,7 @@ verify_gitops_examples: ## Verify and clone rhos-gitops/examples repository if n
 
 ##@ ARGOCD INSTANCE MANAGEMENT
 .PHONY: deploy_argocd_instance
-deploy_argocd_instance: ## Deploy a new ArgoCD instance (Usage: ARGOCD_INSTANCE=client1 make deploy_argocd_instance)
-	# Validate required parameter
-	@if [ -z "$(ARGOCD_INSTANCE)" ]; then \
-		echo "Error: ARGOCD_INSTANCE is required. Usage: ARGOCD_INSTANCE=client1 make deploy_argocd_instance"; \
-		exit 1; \
-	fi
+deploy_argocd_instance: check-var-ARGOCD_INSTANCE ## Deploy a new ArgoCD instance (Usage: ARGOCD_INSTANCE=client1 make deploy_argocd_instance)
 	@echo "Deploying ArgoCD instance: $(ARGOCD_INSTANCE)"
 	# Create dedicated namespace for this ArgoCD instance
 	@echo "Creating namespace gitops-$(ARGOCD_INSTANCE)"
@@ -65,16 +66,7 @@ deploy_argocd_instance: ## Deploy a new ArgoCD instance (Usage: ARGOCD_INSTANCE=
 
 ##@ NAMESPACE MANAGEMENT
 .PHONY: create_managed_namespace
-create_managed_namespace: ## Create/update a namespace managed by an ArgoCD instance (Usage: NAMESPACE=rhoso1 ARGOCD_INSTANCE=client1 make create_managed_namespace)
-	# Validate required parameters
-	@if [ -z "$(NAMESPACE)" ]; then \
-		echo "Error: NAMESPACE is required. Usage: NAMESPACE=rhoso1 ARGOCD_INSTANCE=client1 make create_managed_namespace"; \
-		exit 1; \
-	fi
-	@if [ -z "$(ARGOCD_INSTANCE)" ]; then \
-		echo "Error: ARGOCD_INSTANCE is required. Usage: NAMESPACE=rhoso1 ARGOCD_INSTANCE=client1 make create_managed_namespace"; \
-		exit 1; \
-	fi
+create_managed_namespace: check-var-NAMESPACE check-var-ARGOCD_INSTANCE ## Create/update a namespace managed by an ArgoCD instance (Usage: NAMESPACE=rhoso1 ARGOCD_INSTANCE=client1 make create_managed_namespace)
 	@echo "Creating/updating managed namespace: $(NAMESPACE) for ArgoCD instance: $(ARGOCD_INSTANCE)"
 	# Create namespace with proper labels for ArgoCD management and pod security
 	@sed -e 's/NAMESPACE/$(NAMESPACE)/g' -e 's/ARGOCD_INSTANCE/$(ARGOCD_INSTANCE)/g' argocd-instance-configs/managed-namespace.yaml | oc apply -f -
@@ -165,17 +157,7 @@ install_vault_secrets_operator: ## Install the Vault Secrets Operator from certi
 	@echo "  make setup_vault NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> APPROLE_SECRET_ID=<secret-id>"
 
 .PHONY: setup_vault
-setup_vault: verify_gitops_examples ## Setup Vault namespace and deploy vault configuration (Usage: NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> APPROLE_SECRET_ID=<secret-id> make setup_vault)
-	# Validate required parameters
-	@if [ -z "$(NAMESPACE)" ] || [ -z "$(APPROLE_ROLE_ID)" ] || [ -z "$(APPROLE_SECRET_ID)" ]; then \
-		echo "Error: Missing required parameter(s)"; \
-		[ -z "$(NAMESPACE)" ] && echo "  - NAMESPACE is required"; \
-		[ -z "$(APPROLE_ROLE_ID)" ] && echo "  - APPROLE_ROLE_ID is required"; \
-		[ -z "$(APPROLE_SECRET_ID)" ] && echo "  - APPROLE_SECRET_ID is required"; \
-		echo ""; \
-		echo "Usage: make setup_vault NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> APPROLE_SECRET_ID=<secret-id>"; \
-		exit 1; \
-	fi
+setup_vault: check-var-NAMESPACE check-var-APPROLE_ROLE_ID check-var-APPROLE_SECRET_ID verify_gitops_examples ## Setup Vault namespace and deploy vault configuration (Usage: NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> APPROLE_SECRET_ID=<secret-id> make setup_vault)
 	@echo "Setting up Vault in namespace: $(NAMESPACE)"
 	@echo "Creating namespace..."
 	@oc create namespace $(NAMESPACE) --dry-run=client -o yaml | oc apply -f -
@@ -193,6 +175,32 @@ setup_vault: verify_gitops_examples ## Setup Vault namespace and deploy vault co
 	@echo "Building and applying vault configuration..."
 	@oc apply -k examples/infra/vault --server-side --force-conflicts
 	@echo "Vault setup complete for namespace: $(NAMESPACE)"
+
+.PHONY: verify_vault_auths_connections
+verify_vault_auths_connections: check-var-NAMESPACE check-var-APPROLE_ROLE_ID ## Verify Vault authentication and connection status (Usage: NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> make verify_vault_auths_connections)
+	@echo "=========================================="
+	@echo "Verifying Vault in namespace: $(NAMESPACE)"
+	@echo "=========================================="
+	@echo ""
+	@echo "Checking VaultAuth status..."
+	@echo "---"
+	@oc -n $(NAMESPACE) get vaultauths.secrets.hashicorp.com vaultauth-$(APPROLE_ROLE_ID) -ojsonpath='{.status}' | jq
+	@echo ""
+	@echo "Checking VaultConnection status..."
+	@echo "---"
+	@oc -n $(NAMESPACE) get vaultconnections.secrets.hashicorp.com vaultconnection-corp-redhat -ojsonpath='{.status}' | jq
+	@echo ""
+	@echo "=========================================="
+	@echo "Quick Status Check:"
+	@echo "=========================================="
+	@printf "VaultAuth valid: "
+	@oc -n $(NAMESPACE) get vaultauths.secrets.hashicorp.com vaultauth-$(APPROLE_ROLE_ID) -ojsonpath='{.status.valid}' 2>/dev/null || echo "ERROR: VaultAuth resource not found or authentication failed"
+	@echo ""
+	@printf "VaultConnection valid: "
+	@oc -n $(NAMESPACE) get vaultconnections.secrets.hashicorp.com vaultconnection-corp-redhat -ojsonpath='{.status.valid}' 2>/dev/null || echo "ERROR: VaultConnection resource not found or connection failed"
+	@echo ""
+	@echo "=========================================="
+	@echo "✅ Verification complete"
 
 .PHONY: clean_gitops_examples
 clean_gitops_examples: ## Remove the cloned examples directory

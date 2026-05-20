@@ -3,10 +3,8 @@ kind: Kustomization
 
 namespace: NAMESPACE_PLACEHOLDER
 
-resources:
-  - vault-auth.yaml
-  - vault-connection.yaml
-  - vault-secret.yaml
+components:
+  - manifests
 
 patches:
   - target:

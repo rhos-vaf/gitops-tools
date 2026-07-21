@@ -202,6 +202,81 @@ verify_vault_auths_connections: check-var-NAMESPACE check-var-APPROLE_ROLE_ID ##
 	@echo "=========================================="
 	@echo "✅ Verification complete"
 
+##@ ESO INTEGRATION
+.PHONY: install_eso_operator
+install_eso_operator: ## Install the Red Hat External Secrets Operator via ArgoCD Application
+	@echo "=========================================="
+	@echo "Installing External Secrets Operator"
+	@echo "=========================================="
+	@oc apply -f eso-configs/eso-operator-install.yaml
+	@echo ""
+	@echo "Waiting for ESO Application to become healthy..."
+	@until oc get application external-secrets-operator -n openshift-gitops -ojsonpath='{.status.health.status}' 2>/dev/null | grep -q Healthy; do \
+		echo "  Waiting... ($$(oc get application external-secrets-operator -n openshift-gitops -ojsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || echo 'pending'))"; \
+		sleep 10; \
+	done
+	@echo ""
+	@echo "Waiting for ESO operator deployment to be created..."
+	@until oc get deployment -n external-secrets-operator -l app.kubernetes.io/name=external-secrets-operator 2>/dev/null | grep -q external-secrets; do \
+		echo "  Waiting for operator deployment..."; \
+		sleep 10; \
+	done
+	@oc wait --for=condition=Available=True -n external-secrets-operator deployment -l app.kubernetes.io/name=external-secrets-operator --timeout=300s
+	@echo ""
+	@echo "Waiting for ESO controller pods in external-secrets namespace..."
+	@until oc get deployment -n external-secrets -l app.kubernetes.io/name=external-secrets 2>/dev/null | grep -q external-secrets; do \
+		echo "  Waiting for ESO controller deployment..."; \
+		sleep 10; \
+	done
+	@oc wait --for=condition=Available=True -n external-secrets deployment -l app.kubernetes.io/name=external-secrets --timeout=300s
+	@echo ""
+	@echo "✅ External Secrets Operator installed"
+	@echo ""
+	@echo "Once installed, you can configure ESO with:"
+	@echo "  make setup_eso NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> APPROLE_SECRET_ID=<secret-id>"
+
+.PHONY: setup_eso
+setup_eso: check-var-NAMESPACE check-var-APPROLE_ROLE_ID check-var-APPROLE_SECRET_ID verify_gitops_examples ## Setup ESO SecretStore with Vault AppRole auth (Usage: NAMESPACE=<namespace> APPROLE_ROLE_ID=<role-id> APPROLE_SECRET_ID=<secret-id> make setup_eso)
+	@echo "Setting up ESO SecretStore in namespace: $(NAMESPACE)"
+	@echo "Creating namespace..."
+	@oc create namespace $(NAMESPACE) --dry-run=client -o yaml | oc apply -f -
+	@echo "Encoding AppRole secret ID..."
+	$(eval APPROLE_SECRET_ID_BASE64 := $(shell echo -n "$(APPROLE_SECRET_ID)" | base64 -w 0))
+	@echo "Applying Red Hat CA certificate..."
+	@cat examples/infra/secret/redhat-ca.yaml | \
+		sed 's/namespace: openstack/namespace: $(NAMESPACE)/' | \
+		oc apply -f -
+	@echo "Creating vault-approle-secret from template..."
+	@sed -e 's/NAMESPACE_PLACEHOLDER/$(NAMESPACE)/g' \
+	     -e 's|APPROLE_SECRET_ID_BASE64_PLACEHOLDER|$(APPROLE_SECRET_ID_BASE64)|g' \
+	     eso-configs/vault-approle-secret.yaml.template > examples/infra/eso/vault-approle-secret.yaml
+	@echo "Creating kustomization from template..."
+	@sed -e 's/NAMESPACE_PLACEHOLDER/$(NAMESPACE)/g' \
+	     -e 's/APPROLE_ROLE_ID_PLACEHOLDER/$(APPROLE_ROLE_ID)/g' \
+	     eso-configs/eso-approle-kustomization.yaml.template > examples/infra/eso/kustomization.yaml
+	@echo "Building and applying ESO configuration..."
+	@oc apply -k examples/infra/eso --server-side --force-conflicts
+	@echo "ESO SecretStore setup complete for namespace: $(NAMESPACE)"
+
+.PHONY: verify_eso_auths_connections
+verify_eso_auths_connections: check-var-NAMESPACE ## Verify ESO SecretStore authentication and connection status (Usage: NAMESPACE=<namespace> make verify_eso_auths_connections)
+	@echo "=========================================="
+	@echo "Verifying ESO in namespace: $(NAMESPACE)"
+	@echo "=========================================="
+	@echo ""
+	@echo "Checking SecretStore status..."
+	@echo "---"
+	@oc -n $(NAMESPACE) get secretstore vault-backend -ojsonpath='{.status}' | jq
+	@echo ""
+	@echo "=========================================="
+	@echo "Quick Status Check:"
+	@echo "=========================================="
+	@printf "SecretStore valid: "
+	@oc -n $(NAMESPACE) get secretstore vault-backend -ojsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "ERROR: SecretStore resource not found or authentication failed"
+	@echo ""
+	@echo "=========================================="
+	@echo "✅ Verification complete"
+
 .PHONY: clean_gitops_examples
 clean_gitops_examples: ## Remove the cloned examples directory
 	@rm -rf examples
